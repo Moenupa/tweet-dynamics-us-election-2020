@@ -48,6 +48,11 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
     df = pd.read_csv(main_path, lineterminator='\n')
     assert len(df.columns) == 21, \
         f'Unexpected no. of columns in source file: {df.shape}'
+        
+    for col_name in ['created_at', 'collected_at', 'user_join_date']:
+        assert col_name in df.columns, \
+            f'Column {col_name} not found in source file'
+        df[col_name] = pd.to_datetime(df[col_name], errors='raise', exact=False)
 
     # adding columns to the main dataframe from other files
     # these files are single-column csv files for prediction results
@@ -58,8 +63,7 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
         assert df.shape[0] == column_data.shape[0], \
             f'Inconsistent no. of rows: {df.shape} vs {column_data.shape}'
 
-        # to be safe, we need to do this
-        # df[column_data.name] = column_data.values
+        # to be safe, we need to do `df[column_data.name] = column_data.values`
         # https://stackoverflow.com/questions/12555323/how-to-add-a-new-column-to-an-existing-dataframe
         # but actually, index are never changed in the two files
         # so assigning values is enough
@@ -70,14 +74,17 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
         
     if cache:
         os.makedirs(f'{DATA_ROOT}/cache', exist_ok=True)
-        # cache the merged dataframe as pkl
         pkl.dump(df, open(pickle_path, 'wb'))
 
-    # we are safe to return this merged dataframe
     return df
 
 if __name__ == '__main__':
     pd.set_option('display.max_colwidth', None)
     pd.set_option('display.max_columns', None)
-    df = load_data('biden')
+    df = load_data('biden', cache=False)
     print(df.head())
+    print(type(df['created_at'][0]), df['created_at'][0])
+    
+    # col_to_inspect = 'created_at'
+    # dates = df[col_to_inspect].apply(lambda x: len(x))
+    # print(df.loc[dates == 19, col_to_inspect][:5])

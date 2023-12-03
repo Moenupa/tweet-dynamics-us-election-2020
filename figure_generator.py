@@ -3,7 +3,6 @@ from utils import load_data, CANDIDATES
 
 import numpy as np
 import pandas as pd
-from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 import seaborn as sns
@@ -28,21 +27,19 @@ def plot_candidate(candidate_name: str, target_col: str = 'sent'):
     }
     counter_by_date = defaultdict(int)
     
-    for _, (tweet_datetime, column_value) in par_data[['created_at', target_col]].iterrows():
+    for idx, (dt_obj, col_val) in tqdm(par_data[['created_at', target_col]].iterrows(), total=par_data.shape[0], desc=candidate_name):
         # logging.info(i, tweet_datetime, column_value)
-        if not isinstance(tweet_datetime, str):
-            # print("err! {2:}th dateStr is not string, type = {0:}, val = {1:}".format(type(dateStr), dateStr, i))
+        if not isinstance(dt_obj, pd.Timestamp):
+            logging.error(f"err! At {idx}th type={type(dt_obj)}, val={dt_obj}")
             continue
-        if '.' in tweet_datetime:
-            pre, post = tweet_datetime.split('.')
-            tweet_datetime = pre + '.' + post[:6]
-            date = datetime.strptime(tweet_datetime, '%Y-%m-%d %H:%M:%S.%f')
-        else:
-            date = datetime.strptime(tweet_datetime, '%Y-%m-%d %H:%M:%S')
-        date_obj = datetime(date.year, date.month, date.day, date.hour)
+    
+        # truncate by hour, by setting min, s, ms to 0
+        # this avoids plotting too many xticks
+        # by minute is too sharp, by day is too coarse
+        dt_obj = dt_obj.replace(minute=0, second=0, microsecond=0)
         
-        counter_by_date[date_obj] += 1
-        counter_by_value[column_value][date_obj] += 1
+        counter_by_date[dt_obj] += 1
+        counter_by_value[col_val][dt_obj] += 1
 
     x = list(sorted(counter_by_date.keys()))
     for each_date in x:
@@ -77,6 +74,7 @@ def plot_candidate(candidate_name: str, target_col: str = 'sent'):
     
     plt.tight_layout()
     plt.savefig(f"figures/{candidate_name}_{target_col}.png", dpi=300)
+    plt.clf()
 
 
 if __name__ == '__main__':
