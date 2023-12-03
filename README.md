@@ -19,8 +19,8 @@
 
 ## How to run
 
-```
-data = pd.read_csv('data/src/hashtag_donaldtrump.csv')
-
+```py
+from util import load_data
+data = load_data("trump") # eithor "trump" or "biden"
 ```
    

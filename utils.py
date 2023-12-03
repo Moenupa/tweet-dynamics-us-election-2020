@@ -4,15 +4,18 @@ from glob import glob
 import numpy as np
 import pandas as pd
 import logging
-from collections import Counter
+import pickle as pkl
 
+
+CANDIDATES = ['biden', 'trump']
 DATA_ROOT = 'data'
 
-def load_data(candidate: str) -> pd.DataFrame:
+def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
     """
     Load data for a given candidate, structured as follows:\n
     `data/{df_name}/{candidate}.csv`\n
     e.g. `data/src/hashtag_donaldtrump.csv` and `data/lang/trump.csv`
+    and merge them column-wise into a single dataframe.
     
     Args:
         `candidate` (str): Candidate name, either `biden` or `trump`
@@ -20,8 +23,13 @@ def load_data(candidate: str) -> pd.DataFrame:
     Returns:
         `pd.DataFrame`: Merged dataframe of all the files for the given candidate
     """
-    if candidate not in ['biden', 'trump']:
+    if candidate not in CANDIDATES:
         raise ValueError('Candidate must be either biden or trump')
+    
+    # if cache enabled, return binary cache file if exists
+    pickle_path = f'{DATA_ROOT}/cache/{candidate}.pkl'
+    if cache and os.path.exists(pickle_path):
+        return pkl.load(open(pickle_path, 'rb'))
 
     # find all csv files for the given candidate
     file_paths = [
@@ -45,6 +53,11 @@ def load_data(candidate: str) -> pd.DataFrame:
     # these files are single-column csv files for prediction results
     for path in file_paths:
         column_data = pd.read_csv(path, index_col=False).iloc[:, 0]
+        
+        # check if the no. of rows are consistent
+        assert df.shape[0] == column_data.shape[0], \
+            f'Inconsistent no. of rows: {df.shape} vs {column_data.shape}'
+
         # to be safe, we need to do this
         # df[column_data.name] = column_data.values
         # https://stackoverflow.com/questions/12555323/how-to-add-a-new-column-to-an-existing-dataframe
@@ -54,6 +67,11 @@ def load_data(candidate: str) -> pd.DataFrame:
         
     assert len(df.columns) == 21 + len(file_paths), \
         f'Unexpected no. of columns after merging: {df.shape}'
+        
+    if cache:
+        os.makedirs(f'{DATA_ROOT}/cache', exist_ok=True)
+        # cache the merged dataframe as pkl
+        pkl.dump(df, open(pickle_path, 'wb'))
 
     # we are safe to return this merged dataframe
     return df
