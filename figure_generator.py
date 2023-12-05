@@ -11,6 +11,47 @@ from tqdm import tqdm
 from collections import defaultdict
 
 
+def save_stackplot(name: str, target: str, x, **kwargs):
+    plt.figure(figsize=(10, 5), dpi=300)
+    plt.stackplot(x, 
+                  *list(kwargs.values()), 
+                  labels=list(kwargs.keys()), 
+                  colors=sns.color_palette(
+                      "Spectral", 
+                      n_colors=len(kwargs))
+                  )
+    plt.xlabel('Time (MM-DD)')
+    plt.ylabel('Percentage (%)')
+    plt.xlim(x[0], x[-1])
+    plt.ylim(0, 100)
+    plt.title(f'Tweets\' Sentiment Percentage with #{name.title()}')
+    plt.legend(loc='lower right', ncol=3)
+    plt.gca().xaxis.set_major_formatter(DateFormatter('%m-%d'))
+    plt.gcf().autofmt_xdate()
+    
+    plt.tight_layout()
+    plt.savefig(f"figures/{name}_{target}.png")
+    plt.clf()
+
+
+def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_biden'):
+    # read and set 'created_at' precision to hour, which helps plotting
+    # simply put, plot with xtick by each hour
+    par_data = load_data(candidate_name)
+    par_data['created_at'] = par_data['created_at'].dt.floor('H')
+
+    target_col = sorted([col for col in par_data.columns if col.startswith(target_prefix)])
+    assert target_col, f'no column found with prefix {target_prefix}'
+
+    stats = par_data.groupby(['created_at'], sort=True)[target_col].sum()
+    stats['hr_sum'] = stats.sum(axis=1).round()
+    
+    save_stackplot(candidate_name, target_prefix, stats.index, **{
+        col: stats[col] / stats['hr_sum'] * 100
+        for col in target_col
+    })
+
+
 def plot_candidate(candidate_name: str, target_col: str = 'sent'):
     par_data = load_data(candidate_name)
     if target_col not in par_data.columns:
@@ -22,7 +63,7 @@ def plot_candidate(candidate_name: str, target_col: str = 'sent'):
     # means there are 10 tweets with positive sentiment on 2020-10-1
     counter_by_value = {
         # value: counter
-        value: defaultdict(int)
+        value: defaultdict(float)
         for value in par_data[target_col].unique()
     }
     counter_by_date = defaultdict(int)
@@ -79,4 +120,4 @@ def plot_candidate(candidate_name: str, target_col: str = 'sent'):
 
 if __name__ == '__main__':
     for par_name in CANDIDATES:
-        plot_candidate(par_name, 'emotion')
+        plot_candidate(par_name, 'lang')

@@ -35,13 +35,15 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
     file_paths = [
         path
         for path in glob(f'{DATA_ROOT}/*/*.csv')
-        if candidate in path
+        if f'{candidate}.csv' in path
     ]
     assert len(file_paths) > 0, 'No data found for candidate'
     logging.info(f'{candidate}: {len(file_paths)} files: {file_paths}')
     
     # find the source file from kaggle, only which contains `hashtag` in its name
-    main_path = [path for path in file_paths if 'hashtag' in path][0]
+    main_path = [path for path in file_paths if 'hashtag' in path]
+    assert main_path, 'source not found, plz download dataset from kaggle'
+    main_path = main_path[0]
     file_paths.remove(main_path)
     logging.info(f'source: {main_path}')
 
@@ -55,22 +57,16 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
         df[col_name] = pd.to_datetime(df[col_name], errors='raise', exact=False)
 
     # adding columns to the main dataframe from other files
-    # these files are single-column csv files for prediction results
+    # these files are same-indexed csv files for prediction results
     for path in file_paths:
-        column_data = pd.read_csv(path, index_col=False).iloc[:, 0]
+        partial_data = pd.read_csv(path, index_col=False)
         
         # check if the no. of rows are consistent
-        assert df.shape[0] == column_data.shape[0], \
-            f'Inconsistent no. of rows: {df.shape} vs {column_data.shape}'
+        assert df.shape[0] == partial_data.shape[0], \
+            f'Inconsistent no. of rows: {df.shape} vs {partial_data.shape} ' \
+            f'when reading {path}'
 
-        # to be safe, we need to do `df[column_data.name] = column_data.values`
-        # https://stackoverflow.com/questions/12555323/how-to-add-a-new-column-to-an-existing-dataframe
-        # but actually, index are never changed in the two files
-        # so assigning values is enough
-        df[column_data.name] = column_data
-        
-    assert len(df.columns) == 21 + len(file_paths), \
-        f'Unexpected no. of columns after merging: {df.shape}'
+        df = pd.concat([df, partial_data], axis=1)
         
     if cache:
         os.makedirs(f'{DATA_ROOT}/cache', exist_ok=True)
