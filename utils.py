@@ -60,6 +60,9 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
     # these files are same-indexed csv files for prediction results
     for path in file_paths:
         partial_data = pd.read_csv(path, index_col=False)
+        if partial_data.shape[1] > 1:
+            partial_data.rename(columns=lambda x: f'{path.split("/")[-2]}_{x}', inplace=True)
+        partial_data = pd.get_dummies(partial_data)
         
         # check if the no. of rows are consistent
         assert df.shape[0] == partial_data.shape[0], \
@@ -68,9 +71,8 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
 
         df = pd.concat([df, partial_data], axis=1)
         
-    if cache:
-        os.makedirs(f'{DATA_ROOT}/cache', exist_ok=True)
-        pkl.dump(df, open(pickle_path, 'wb'))
+    os.makedirs(f'{DATA_ROOT}/cache', exist_ok=True)
+    pkl.dump(df, open(pickle_path, 'wb'))
 
     return df
 
