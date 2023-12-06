@@ -9,9 +9,11 @@
     ├── README.md
     └── data
         ├── predict.ipynb
-        ├── emotion             # prediction of emotion column
-        ├── lang                # prediction of language column
-        ├── sent                # prediction of sentiment column
+        ├── emotion             # prediction of tweet's emotion
+        ├── language            # prediction of tweet's language
+        ├── sentiment           # prediction of tweet's sentiment
+        ├── stance_trump        # prediction of tweet's stance for trump
+        ├── stance_biden        # prediction of tweet's stance for biden
         └── src                 # <- kaggle original data
             ├── hashtag_donaldtrump.csv
             └── hashtag_joebiden.csv
