@@ -61,7 +61,9 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
     for path in file_paths:
         partial_data = pd.read_csv(path, index_col=False)
         if partial_data.shape[1] > 1:
-            partial_data.rename(columns=lambda x: f'{path.split("/")[-2]}_{x}', inplace=True)
+            path_name = os.path.basename(os.path.dirname(path))
+            assert path_name, f'{path} -> {path_name}'
+            partial_data.rename(columns=lambda x: f'{path_name}_{x}', inplace=True)
         partial_data = pd.get_dummies(partial_data)
         
         # check if the no. of rows are consistent

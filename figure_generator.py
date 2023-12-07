@@ -1,4 +1,7 @@
+import os
 import logging
+
+from matplotlib.axes import Axes
 from utils import load_data, CANDIDATES
 
 import numpy as np
@@ -12,26 +15,55 @@ from collections import defaultdict
 
 
 def save_stackplot(name: str, target: str, x, **kwargs):
-    plt.figure(figsize=(10, 5), dpi=300)
-    plt.stackplot(x, 
-                  *list(kwargs.values()), 
-                  labels=list(k.split("_")[-1] for k in kwargs.keys()),
-                  colors=sns.color_palette(
-                      "Spectral", 
-                      n_colors=len(kwargs))
-                  )
-    plt.xlabel('Time (MM-DD)')
-    plt.ylabel('Percentage (%)')
-    plt.xlim(x[0], x[-1])
-    plt.ylim(0, 100)
-    plt.title(f'{target.replace("_", " ").title()} Percentage Stackplot with #{name.title()} Tweets')
-    plt.legend(loc='lower right', ncol=3)
-    plt.gca().xaxis.set_major_formatter(DateFormatter('%m-%d'))
-    plt.gcf().autofmt_xdate()
-    
-    plt.tight_layout()
-    plt.savefig(f"figures/{name}_{target}.png")
-    plt.clf()
+    os.makedirs(f"figures/percetage/{name}", exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(9, 6), dpi=300)
+    ax: Axes = ax
+    ax.stackplot(x,
+                 *list(kwargs.values()),
+                 labels=list(k.split("_")[-1] for k in kwargs.keys()),
+                 colors=sns.color_palette("Spectral", n_colors=len(kwargs))
+                 )
+    ax.set_xlabel('Time (MM-DD)')
+    ax.set_ylabel('Percentage (%)')
+    ax.set_xlim(x[0], x[-1])
+    ax.set_ylim(0, 100)
+    fig.legend(loc='outside lower center', ncols=min(10, len(kwargs)))
+    fig.suptitle(
+        f'{target.replace("_", " ").title()} Percentage Stackplot'
+        f' with #{name.title()} Tweets')
+    ax.xaxis.set_major_formatter(DateFormatter('%m-%d'))
+    fig.autofmt_xdate()
+
+    # fig.tight_layout()
+    fig.savefig(f"figures/percetage/{name}/{target}.png")
+    fig.clear()
+
+
+def save_stackplot_raw(name: str, target: str, x, **kwargs):
+    os.makedirs(f"figures/quantity/{name}", exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(9, 6), dpi=300)
+    ax: Axes = ax
+    ax.stackplot(x,
+                 *list(kwargs.values()),
+                 labels=list(k.split("_")[-1] for k in kwargs.keys()),
+                 colors=sns.color_palette("Spectral", n_colors=len(kwargs))
+                 )
+    ax.set_xlabel('Time (MM-DD)')
+    ax.set_ylabel('No. of Tweets')
+    ax.set_xlim(x[0], x[-1])
+    ax.set_ylim(0)
+    fig.legend(loc='outside lower center', ncols=min(10, len(kwargs)))
+    fig.suptitle(
+        f'{target.replace("_", " ").title()} Stackplot'
+        f' with #{name.title()} Tweets')
+    ax.xaxis.set_major_formatter(DateFormatter('%m-%d'))
+    fig.autofmt_xdate()
+
+    # fig.tight_layout()
+    fig.savefig(f"figures/quantity/{name}/{target}.png")
+    fig.clear()
 
 
 def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_biden'):
@@ -40,15 +72,17 @@ def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_
     par_data = load_data(candidate_name)
     par_data['created_at'] = par_data['created_at'].dt.floor('H')
 
-    # 
-    target_col = sorted([col for col in par_data.columns if col.startswith(target_prefix)])
+    target_col = sorted(list(filter(
+        lambda x: x.startswith(target_prefix),
+        par_data.columns
+    )))
     assert target_col, f'no column found with prefix `{target_prefix}`'
 
     stats = par_data.groupby(['created_at'], sort=True)[target_col].sum()
     stats['hr_sum'] = stats.sum(axis=1).round()
-    
-    save_stackplot(candidate_name, target_prefix, stats.index, **{
-        col: stats[col] / stats['hr_sum'] * 100
+
+    save_stackplot_raw(candidate_name, target_prefix, stats.index, **{
+        col: stats[col]
         for col in target_col
     })
 
@@ -57,7 +91,7 @@ def plot_candidate(candidate_name: str, target_col: str = 'sent'):
     par_data = load_data(candidate_name)
     if target_col not in par_data.columns:
         raise ValueError(f'Column {target_col} not found in data')
-    
+
     # counter by value of the column with struct like:
     # { column_value: { date: count } }
     # e.g. { 'positive': { datetime(2020, 10, 1): 10 } }
@@ -68,18 +102,18 @@ def plot_candidate(candidate_name: str, target_col: str = 'sent'):
         for value in par_data[target_col].unique()
     }
     counter_by_date = defaultdict(int)
-    
+
     for idx, (dt_obj, col_val) in tqdm(par_data[['created_at', target_col]].iterrows(), total=par_data.shape[0], desc=candidate_name):
         # logging.info(i, tweet_datetime, column_value)
         if not isinstance(dt_obj, pd.Timestamp):
             logging.error(f"err! At {idx}th type={type(dt_obj)}, val={dt_obj}")
             continue
-    
+
         # truncate by hour, by setting min, s, ms to 0
         # this avoids plotting too many xticks
         # by minute is too sharp, by day is too coarse
         dt_obj = dt_obj.replace(minute=0, second=0, microsecond=0)
-        
+
         counter_by_date[dt_obj] += 1
         counter_by_value[col_val][dt_obj] += 1
 
@@ -96,11 +130,11 @@ def plot_candidate(candidate_name: str, target_col: str = 'sent'):
     # print(sorted_counter_by_value['neutral'])
 
     plt.figure(figsize=(10, 5))
-    plt.stackplot(x, 
-                  *tuple(sorted_counter_by_value.values()), 
-                  labels=list(sorted_counter_by_value.keys()), 
+    plt.stackplot(x,
+                  *tuple(sorted_counter_by_value.values()),
+                  labels=list(sorted_counter_by_value.keys()),
                   colors=sns.color_palette(
-                      "Spectral", 
+                      "Spectral",
                       n_colors=len(sorted_counter_by_value))
                   )
     # plt.plot(x, yneg, color='#E6645C', linestyle='-')
@@ -113,13 +147,16 @@ def plot_candidate(candidate_name: str, target_col: str = 'sent'):
     plt.legend(loc='lower right', ncol=3)
     plt.gca().xaxis.set_major_formatter(DateFormatter('%m-%d'))
     plt.gcf().autofmt_xdate()
-    
+
     plt.tight_layout()
     plt.savefig(f"figures/{candidate_name}_{target_col}.png", dpi=300)
     plt.clf()
 
 
 if __name__ == '__main__':
-    for col in ['emotion', 'language', 'sentiment', 'stance_biden', 'stance_trump']:
+    target_cols = ['emotion', 'language',
+                   'sentiment', 'stance_biden', 'stance_trump']
+    # target_cols = ['language']
+    for col in target_cols:
         for par_name in CANDIDATES:
             plot_candidate_multiclass(par_name, col)
