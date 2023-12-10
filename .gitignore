@@ -160,5 +160,9 @@ cython_debug/
 .idea/
 .vscode/
 
+# kaggle data and local cache for faster loading
 hashtag_*.csv
 cache/
+
+# figures reporducible by running generator.py
+# figures/

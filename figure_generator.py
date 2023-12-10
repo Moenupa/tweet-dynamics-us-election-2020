@@ -8,7 +8,7 @@ from utils import load_data, CANDIDATES
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.dates import DateFormatter
+from matplotlib.dates import DateFormatter, DayLocator
 import seaborn as sns
 
 
@@ -39,13 +39,18 @@ def save_stackplot(name: str, target: str, ylabel: str, x, **kwargs) -> None:
                  )
     ax.set_xlabel('Time (MM-DD)')
     ax.set_xlim(x[0], x[-1])
+    ax.xaxis.set_major_locator(DayLocator(interval=2))
+    ax.xaxis.set_minor_locator(DayLocator(interval=1))
+    ax.xaxis.set_major_formatter(DateFormatter('%m-%d'))
+    fig.autofmt_xdate()
 
     if ylabel == 'percentage':
         ax.set_ylabel('Percentage (%)')
         ax.set_ylim(0, 100)
     elif ylabel == 'quantity':
         ax.set_ylabel('No. of Tweets')
-        ax.set_ylim(0)
+        ax.set_ylim(1)
+        ax.set_yscale('log')
     else:
         ax.set_ylabel(ylabel)
         ax.set_ylim(0)
@@ -54,8 +59,6 @@ def save_stackplot(name: str, target: str, ylabel: str, x, **kwargs) -> None:
         f' with #{name.title()} Tweets')
 
     fig.legend(loc='outside lower center', ncols=min(10, len(kwargs)))
-    ax.xaxis.set_major_formatter(DateFormatter('%m-%d'))
-    fig.autofmt_xdate()
 
     fig.savefig(f"figures/{ylabel}/{name}/{target}.png")
     fig.clear()
