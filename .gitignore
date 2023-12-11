@@ -166,3 +166,6 @@ cache/
 
 # figures reporducible by running generator.py
 # figures/
+
+# shape files
+shp/*.zip
