@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.dates import DateFormatter, DayLocator
 import seaborn as sns
+from scipy import stats
 
 
 PLOT_KW_STACK = {'figsize':(8, 6), 'dpi':200}
@@ -22,7 +23,7 @@ def fmt(string: str) -> str:
     return string.replace("_", " ").title()
 
 
-def save_stackplot(name: str, target: str, ylabel: str, x, **kwargs) -> None:
+def save_stackplot(name: str, target: str, ylabel: str, time_scale: str, x, **kwargs) -> None:
     """
     Save a stackplot to `figures/<ylabel>` or `figures/quantity` folder
     
@@ -62,23 +63,23 @@ def save_stackplot(name: str, target: str, ylabel: str, x, **kwargs) -> None:
         ax.set_ylabel(ylabel)
         ax.set_ylim(0)
     ax.set_title(
-        f'{fmt(target)} Stackplot with #{name.title()} Tweets')
+        f'{fmt(target)} Stackplot with #{name.title()} Tweets Grouped by {time_scale}')
 
     fig.legend(loc='outside lower center', ncols=min(10, len(kwargs)))
 
     os.makedirs(f"figures/{ylabel}/{name}", exist_ok=True)
-    fig.savefig(f"figures/{ylabel}/{name}/{target}.png")
+    fig.savefig(f"figures/{ylabel}/{name}/{target}_{time_scale}.png")
     plt.close(fig)
 
 
-def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_biden'):
+def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_biden', time_scale: str = 'H'):
     """
     Plot the stackplot of each class of target_prefix
     """
     # read and set 'created_at' precision to hour, which helps plotting
     # simply put, plot with xtick by each hour
     par_data = load_data(candidate_name)
-    par_data['created_at'] = par_data['created_at'].dt.floor('H')
+    par_data['created_at'] = par_data['created_at'].dt.floor(time_scale)
 
     # get all columns with target_prefix
     target_col = sorted(list(filter(
@@ -87,18 +88,18 @@ def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_
     )))
     assert target_col, f'no column found with prefix `{target_prefix}`'
 
-    # group by hour and sum up the count
+    # group by time_scale and sum up the count
     stats = par_data.groupby(['created_at'], sort=True)[target_col].sum()
     stats['hr_sum'] = stats.sum(axis=1).round()
 
     # run a percentage plot
-    save_stackplot(candidate_name, target_prefix, 'percentage',
+    save_stackplot(candidate_name, target_prefix, 'percentage', time_scale,
                    x=stats.index, **{
                        col: stats[col] / stats['hr_sum'] * 100
                        for col in target_col
                    })
     # run a quantity plot
-    save_stackplot(candidate_name, target_prefix, 'quantity',
+    save_stackplot(candidate_name, target_prefix, 'quantity', time_scale,
                    x=stats.index, **{
                        col: stats[col]
                        for col in target_col
@@ -199,16 +200,92 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
     fig.savefig(f"figures/states/{candidate_name}/{target_prefix}.png")
     plt.close(fig)
 
+def plot_candidate_correlation(candidate_name: str, time_scale: str = 'H', aim: tuple = ('negative', 'anger')):
+    """
+    Plot the scatter between sentiment and emotion of each class
+    """
+    # read and set 'created_at' precision to hour, which helps plotting
+    # simply put, plot with xtick by each hour
+    par_data = load_data(candidate_name)
+    par_data['created_at'] = par_data['created_at'].dt.floor(time_scale)
+
+    # get all columns with emotion and sentiment seperately
+    full_col_x = sorted(list(filter(
+        lambda x: x.startswith("sentiment"),
+        par_data.columns
+    )))
+    assert full_col_x, f'no column found with prefix `sentiment`'
+    target_col_x = sorted(list(filter(
+        lambda x: x.endswith(aim[0]),
+        full_col_x
+    )))
+    assert target_col_x, f'no column found with suffix `{aim[0]}`'
+
+    full_col_y = sorted(list(filter(
+        lambda x: x.startswith("emotion"),
+        par_data.columns
+    )))
+    assert full_col_y, f'no column found with prefix `emotion`'
+    target_col_y = sorted(list(filter(
+        lambda x: x.endswith(aim[1]),
+        full_col_y
+    )))
+    assert target_col_y, f'no column found with suffix `{aim[0]}`'
+
+    # group by time_scale and sum up the count
+    stats_x = par_data.groupby(['created_at'], sort=True)[target_col_x].sum()
+    sum_x = par_data.groupby(['created_at'], sort=True)[full_col_x].sum().sum(axis=1).round()
+
+    stats_y = par_data.groupby(['created_at'], sort=True)[target_col_y].sum()
+    sum_y = par_data.groupby(['created_at'], sort=True)[full_col_y].sum().sum(axis=1).round()
+
+    row = [stats_x[i] / sum_x * 100 for i in target_col_x]
+    col = [stats_y[i] / sum_y * 100 for i in target_col_y]
+    
+    # save the scatter plot
+    fig, ax = plt.subplots(**PLOT_KW_STACK)
+    
+    # declare type, this helps intellicode and pylint
+    fig: Figure = fig
+    ax: Axes = ax
+
+    # plot scatter
+    x = row[0].tolist()
+    y = col[0].tolist()
+    color = (0, 66/255., 202/255.)
+    if candidate_name == 'trump':
+        color = (233/255., 20/255., 30/255.)
+    ax.scatter(x, y, s=15, color=color)
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+    x_range = np.linspace(0, 100, 100)
+    ax.plot(x_range, intercept + slope*x_range, color=(0.5, 0.5, 0.5), label='Regression Line')
+    ax.set_xlabel(f'Percentage of Sentiment {aim[0]} (%)')
+    ax.set_ylabel(f'Percentage of Emotion {aim[1]} (%)')
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+ 
+    ax.set_title(
+        f'Scatter of {aim[0]} and {aim[1]} with #{candidate_name.title()} Tweets Grouped by {time_scale}')
+
+    os.makedirs(f"figures/correlation/{candidate_name}", exist_ok=True)
+    fig.savefig(f"figures/correlation/{candidate_name}/{aim[0]}_{aim[1]}_{time_scale}.png")
+    plt.close(fig)
 
 if __name__ == '__main__':
-    targets = ['emotion', 'language',
-               'sentiment', 'stance_biden', 'stance_trump']
-    targets = []
-    for col in targets:
-        for par_name in CANDIDATES:
-            plot_candidate_multiclass(par_name, col)
+    targets = ['emotion', 'sentiment', 'stance_biden', 'stance_trump']
+    time_scale = ['H', '6H', '12H', 'D']
+    # for ts in time_scale:
+    #     for col in targets:
+    #         for par_name in CANDIDATES:
+    #             plot_candidate_multiclass(par_name, col, ts)
     
-    targets = ['sentiment', 'stance_biden', 'stance_trump']
-    for col in targets:
+    # targets = ['sentiment', 'stance_biden', 'stance_trump']
+    # for col in targets:
+    #     for par_name in CANDIDATES:
+    #         plot_candidate_geo(par_name, col)
+
+    aims = [('negative', 'anger'), ('positive', 'joy')]
+    for ts in time_scale:
         for par_name in CANDIDATES:
-            plot_candidate_geo(par_name, col)
+            for aim in aims:
+                plot_candidate_correlation(par_name, ts, aim)
