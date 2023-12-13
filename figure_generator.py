@@ -3,7 +3,7 @@ import logging
 
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from utils import load_data, CANDIDATES
+from utils import load_data, get_cols_by_prefix, get_cols_by_suffix, CANDIDATES
 
 import numpy as np
 import pandas as pd
@@ -82,11 +82,7 @@ def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_
     par_data['created_at'] = par_data['created_at'].dt.floor(time_scale)
 
     # get all columns with target_prefix
-    target_col = sorted(list(filter(
-        lambda x: x.startswith(target_prefix),
-        par_data.columns
-    )))
-    assert target_col, f'no column found with prefix `{target_prefix}`'
+    target_col = get_cols_by_prefix(par_data, target_prefix)
 
     # group by time_scale and sum up the count
     stats = par_data.groupby(['created_at'], sort=True)[target_col].sum()
@@ -133,12 +129,7 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
     usa = usa[usa['STUSPS'].isin(states)]
     
     par_data = load_data(candidate_name)
-    # get all columns with target_prefix
-    target_col = sorted(list(filter(
-        lambda x: x.startswith(target_prefix),
-        par_data.columns
-    )))
-    assert target_col, f'no column found with prefix `{target_prefix}`'
+    target_col = get_cols_by_prefix(par_data, target_prefix)
     assert len(target_col) == 3, f'column is not neg-neu-pos form {target_col}'
     
     # drop tweets that has no geo location info
@@ -210,22 +201,15 @@ def plot_candidate_correlation(candidate_name: str, time_scale: str = 'H', aim: 
     par_data['created_at'] = par_data['created_at'].dt.floor(time_scale)
 
     # get all columns with emotion and sentiment seperately
-    full_col_x = sorted(list(filter(
-        lambda x: x.startswith("sentiment"),
-        par_data.columns
-    )))
-    assert full_col_x, f'no column found with prefix `sentiment`'
+    full_col_x = get_cols_by_prefix(par_data, 'sentiment')
+    full_col_y = get_cols_by_prefix(par_data, 'emotion')
+    
     target_col_x = sorted(list(filter(
         lambda x: x.endswith(aim[0]),
         full_col_x
     )))
     assert target_col_x, f'no column found with suffix `{aim[0]}`'
 
-    full_col_y = sorted(list(filter(
-        lambda x: x.startswith("emotion"),
-        par_data.columns
-    )))
-    assert full_col_y, f'no column found with prefix `emotion`'
     target_col_y = sorted(list(filter(
         lambda x: x.endswith(aim[1]),
         full_col_y
@@ -250,15 +234,16 @@ def plot_candidate_correlation(candidate_name: str, time_scale: str = 'H', aim: 
     ax: Axes = ax
 
     # plot scatter
-    x = row[0].tolist()
-    y = col[0].tolist()
-    color = (0, 66/255., 202/255.)
-    if candidate_name == 'trump':
-        color = (233/255., 20/255., 30/255.)
-    ax.scatter(x, y, s=15, color=color)
-    slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
-    x_range = np.linspace(0, 100, 100)
-    ax.plot(x_range, intercept + slope*x_range, color=(0.5, 0.5, 0.5), label='Regression Line')
+    # x = row[0].tolist()
+    # y = col[0].tolist()
+    color = (0, 66/255., 202 / 255.) if candidate_name == 'biden' \
+        else (233/255., 20/255., 30/255.)
+    sns.regplot(x=row[0], y=col[0], ax=ax, color=color, 
+                truncate=False, line_kws={'color': (0.5, 0.5, 0.5)}, scatter_kws={'s': 15})
+    # ax.scatter(x, y, s=15, color=color)
+    # slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+    # x_range = np.linspace(0, 100, 100)
+    # ax.plot(x_range, intercept + slope*x_range, color=(0.5, 0.5, 0.5), label='Regression Line')
     ax.set_xlabel(f'Percentage of Sentiment {aim[0]} (%)')
     ax.set_ylabel(f'Percentage of Emotion {aim[1]} (%)')
     ax.set_xlim(0, 100)

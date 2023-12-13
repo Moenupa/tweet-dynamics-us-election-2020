@@ -169,3 +169,5 @@ cache/
 
 # shape files
 shp/*.zip
+
+tmp/
