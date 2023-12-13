@@ -14,8 +14,13 @@ from matplotlib.dates import DateFormatter, DayLocator
 import seaborn as sns
 
 
+PLOT_KW_STACK = {'figsize':(8, 6), 'dpi':200}
+PLOT_KW = {'figsize':(8, 4.5), 'dpi':200}
+
+
 def fmt(string: str) -> str:
     return string.replace("_", " ").title()
+
 
 def save_stackplot(name: str, target: str, ylabel: str, x, **kwargs) -> None:
     """
@@ -28,7 +33,7 @@ def save_stackplot(name: str, target: str, ylabel: str, x, **kwargs) -> None:
     - `x`: x axis, usually time
     - `kwargs`: key-value pairs of column name and its value, usually the value is a list of y axis
     """
-    fig, ax = plt.subplots(figsize=(9, 6), dpi=300)
+    fig, ax = plt.subplots(**PLOT_KW_STACK)
     
     # declare type, this helps intellicode and pylint
     fig: Figure = fig
@@ -52,8 +57,7 @@ def save_stackplot(name: str, target: str, ylabel: str, x, **kwargs) -> None:
         ax.set_ylim(0, 100)
     elif ylabel == 'quantity':
         ax.set_ylabel('No. of Tweets')
-        ax.set_ylim(1)
-        ax.set_yscale('log')
+        ax.set_ylim(0)
     else:
         ax.set_ylabel(ylabel)
         ax.set_ylim(0)
@@ -64,7 +68,7 @@ def save_stackplot(name: str, target: str, ylabel: str, x, **kwargs) -> None:
 
     os.makedirs(f"figures/{ylabel}/{name}", exist_ok=True)
     fig.savefig(f"figures/{ylabel}/{name}/{target}.png")
-    fig.clear()
+    plt.close(fig)
 
 
 def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_biden'):
@@ -152,17 +156,21 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
     # draw graph according to lat and long onto a map
     scatter_data = par_data.groupby(['lat', 'long']).sum(numeric_only=True)
     scatter_data = cal_score(scatter_data, target_prefix, score_name)
-    fig, ax = plt.subplots(figsize=(16, 9), dpi=300)
+    fig, ax = plt.subplots(**PLOT_KW)
     usa.boundary.plot(ax=ax, linewidth=1, alpha=0.1, color='grey')
     # sns.relplot(data=scatter_data, x="total_bill", y="tip", col="time", hue="day", style="day", kind="scatter")
     sns.scatterplot(scatter_data, 
-                    x='long', y='lat', alpha=0.1, 
+                    x='long', y='lat', alpha=0.2, 
                     hue=score_name, palette='Spectral',
-                    size='No. of Tweets', sizes=(50, 200),
-                    ax=ax, legend=True)
+                    size='No. of Tweets', sizes=(20, 200),
+                    ax=ax, legend=False)
+    # leg = plt.legend()
+    # for lh in leg.legend_handles:
+    #     lh.set_alpha(1)
     ax.set_title(f'{fmt(target_prefix)} Score HeatMap with #{candidate_name.title()} Tweets')
     os.makedirs(f"figures/national/{candidate_name}", exist_ok=True)
     fig.savefig(f"figures/national/{candidate_name}/{target_prefix}.png")
+    plt.close(fig)
     
     # draw graph for each state, categorized, then display on map
     state_data = par_data.groupby(['state_code']).sum(numeric_only=True)
@@ -173,8 +181,10 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
     norm = mcolors.Normalize(vmin=-1, vmax=1, clip=True)
     mapper = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
 
-    fig, ax = plt.subplots(figsize=(16, 9))
+    fig, ax = plt.subplots(**PLOT_KW)
     ax: Axes = ax
+    ax.set_xlabel('long')
+    ax.set_ylabel('lat')
     ax.set_title(f'{fmt(target_prefix)} Score State HeatMap with #{candidate_name.title()} Tweets')
     state_data.plot(ax=ax, linewidth=1, alpha=0.1)
 
@@ -183,16 +193,22 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
         c = mcolors.to_hex(mapper.to_rgba(vf[score_name]))
         vf.plot(color=c, linewidth=0.8, ax=ax, edgecolor='0.9')
 
-    fig.colorbar(mapper, ax=ax)
+    cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
+    fig.colorbar(mapper, cax=cax)
     os.makedirs(f"figures/states/{candidate_name}", exist_ok=True)
     fig.savefig(f"figures/states/{candidate_name}/{target_prefix}.png")
+    plt.close(fig)
 
 
 if __name__ == '__main__':
     targets = ['emotion', 'language',
-                   'sentiment', 'stance_biden', 'stance_trump']
-    targets = ['sentiment']
-    # target_cols = ['language']
+               'sentiment', 'stance_biden', 'stance_trump']
+    targets = []
+    for col in targets:
+        for par_name in CANDIDATES:
+            plot_candidate_multiclass(par_name, col)
+    
+    targets = ['sentiment', 'stance_biden', 'stance_trump']
     for col in targets:
         for par_name in CANDIDATES:
             plot_candidate_geo(par_name, col)
