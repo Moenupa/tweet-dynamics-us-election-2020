@@ -39,6 +39,12 @@ def fmt(string: str) -> str:
     return string.replace("_", " ").title()
 
 
+def legend_reset_alpha(ax: Axes = None, alpha: int = 1) -> None:
+    leg = ax.legend() if ax else plt.legend()
+    for lh in leg.legend_handles:
+        lh.set_alpha(alpha)
+
+
 def save_stackplot(dirname: str, candidate: str, task: str, percentage: bool, x, **kwargs) -> None:
     """
     Save a stackplot to `figures/<dirname>/<candidate>/<task>.png`.
@@ -169,9 +175,6 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
                     hue=score_name, palette='Spectral',
                     size='No. of Tweets', sizes=(20, 200),
                     ax=ax, legend=False)
-    # leg = plt.legend()
-    # for lh in leg.legend_handles:
-    #     lh.set_alpha(1)
     ax.set_title(f'{fmt(target_prefix)} Score HeatMap with #{candidate_name.title()} Tweets')
     os.makedirs(f"figures/national/{candidate_name}", exist_ok=True)
     fig.savefig(f"figures/national/{candidate_name}/{target_prefix}.png")
@@ -205,63 +208,50 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
     plt.close(fig)
 
 
-def plot_candidate_correlation(candidate_name: str, time_scale: str = 'H', aim: tuple = ('negative', 'anger')):
+def plot_candidate_correlation(sentiment: str = 'negative', emotion: str = 'anger'):
     """
     Plot the scatter between sentiment and emotion of each class
     """
-    # read and set 'created_at' precision to hour, which helps plotting
-    # simply put, plot with xtick by each hour
-    par_data = load_data(candidate_name)
-    par_data['created_at'] = par_data['created_at'].dt.floor(time_scale)
-
-    # get all columns with emotion and sentiment seperately
-    full_col_x = get_cols_by_prefix(par_data, 'sentiment')
-    full_col_y = get_cols_by_prefix(par_data, 'emotion')
-    
-    target_col_x = sorted(list(filter(
-        lambda x: x.endswith(aim[0]),
-        full_col_x
-    )))
-    assert target_col_x, f'no column found with suffix `{aim[0]}`'
-
-    target_col_y = sorted(list(filter(
-        lambda x: x.endswith(aim[1]),
-        full_col_y
-    )))
-    assert target_col_y, f'no column found with suffix `{aim[0]}`'
-
-    # group by time_scale and sum up the count
-    stats_x = par_data.groupby(['created_at'], sort=True)[target_col_x].sum()
-    sum_x = par_data.groupby(['created_at'], sort=True)[full_col_x].sum().sum(axis=1).round()
-
-    stats_y = par_data.groupby(['created_at'], sort=True)[target_col_y].sum()
-    sum_y = par_data.groupby(['created_at'], sort=True)[full_col_y].sum().sum(axis=1).round()
-
-    row = [stats_x[i] / sum_x * 100 for i in target_col_x]
-    col = [stats_y[i] / sum_y * 100 for i in target_col_y]
-    
     # save the scatter plot
-    fig, ax = plt.subplots(**PLOT_KW_STACK)
-    
-    # declare type, this helps intellicode and pylint
-    fig: Figure = fig
-    ax: Axes = ax
+    fig, ax = plt.subplots(**PLOT_KW)
 
-    # plot scatter
-    color = (0, 66/255., 202 / 255.) if candidate_name == 'biden' \
-        else (233/255., 20/255., 30/255.)
-    sns.regplot(x=row[0], y=col[0], ax=ax, color=color, 
-                truncate=False, line_kws={'color': (0.5, 0.5, 0.5)}, scatter_kws={'s': 15})
-    ax.set_xlabel(f'Percentage of Sentiment {aim[0]} (%)')
-    ax.set_ylabel(f'Percentage of Emotion {aim[1]} (%)')
+    # declare type, this helps intellicode and pylint
+    fig: Figure = fig; ax: Axes = ax
+    
+    for candidate_name in CANDIDATES:
+        # read and set 'created_at' precision to hour, which helps plotting
+        # simply put, plot with xtick by each hour
+        par_data = load_data(candidate_name)
+        par_data['created_at'] = par_data['created_at'].dt.floor('H')
+
+        # get all columns with emotion and sentiment seperately
+        all_x = get_cols_by_prefix(par_data, 'sentiment')
+        all_y = get_cols_by_prefix(par_data, 'emotion')
+
+        # group by time_scale and sum up the count
+        x = f'sentiment_{sentiment}'
+        y = f'emotion_{emotion}'
+        col_x = dist(par_data, ['created_at'], all_x)[x]
+        col_y = dist(par_data, ['created_at'], all_y)[y]
+
+        # plot scatter
+        color = DNC if candidate_name == 'biden' else GOP
+        sns.regplot(x=col_x*100, y=col_y*100, 
+                    ax=ax, color=color, label=candidate_name, order=2, 
+                    truncate=True, 
+                    line_kws={'color': color}, 
+                    scatter_kws={'s': 20, 'alpha': .3, 'linewidths': 0})
+
+    ax.set_xlabel(f'Percentage of {fmt(x)} (%)')
+    ax.set_ylabel(f'Percentage of {fmt(y)} (%)')
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
- 
-    ax.set_title(
-        f'Scatter of {aim[0]} and {aim[1]} with #{candidate_name.title()} Tweets Grouped by {time_scale}')
+    ax.set_title(f'Correlation between {fmt(x)} and {fmt(y)} Grouped by H')
+    ax.legend()
+    legend_reset_alpha(ax)
 
-    os.makedirs(f"figures/correlation/{candidate_name}", exist_ok=True)
-    fig.savefig(f"figures/correlation/{candidate_name}/{aim[0]}_{aim[1]}_{time_scale}.png")
+    os.makedirs(f"figures/correlation/sent_emo", exist_ok=True)
+    fig.savefig(f"figures/correlation/sent_emo/{sentiment}_{emotion}.png")
     plt.close(fig)
 
 
@@ -316,10 +306,9 @@ def plot_overall_distribution() -> None:
 
 
 if __name__ == '__main__':
-    plot_indictor_correlation()
-    exit(0)
+    # plot_indictor_correlation()
+    # plot_overall_distribution()
     
-    targets = ['emotion', 'sentiment', 'stance_biden', 'stance_trump']
     for ts in TIME_SCALES:
         for prefix in PREFIXES:
             for par_name in CANDIDATES:
@@ -334,7 +323,5 @@ if __name__ == '__main__':
             plot_candidate_geo(par_name, col)
 
     aims = [('negative', 'anger'), ('positive', 'joy')]
-    for ts in TIME_SCALES:
-        for par_name in CANDIDATES:
-            for aim in aims:
-                plot_candidate_correlation(par_name, ts, aim)
+    for aim in aims:
+        plot_candidate_correlation(*aim)
