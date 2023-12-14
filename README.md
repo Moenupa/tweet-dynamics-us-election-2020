@@ -1,28 +1,29 @@
-# Sentiment Analysis
+# Exploring Public Opinion Dynamics From 2020 U.S. Election Tweets
 
-## Data Structure
+## Abstract 
+
+This study delves into the dynamics of public opinion during the 2020 U.S. Presidential Election through sentiment analysis, emotion analysis, and stance detection applied to around 1.72M tweets. We explore the predictive power of sentiment analysis in political science, detailing the transition from traditional to advanced NLP models, notably XLM-RoBERTa, for enhanced Twitter data anal- ysis. Additionally, we examine stance detection's role in reflecting public attitude and potential voting behavior. The study investigates how sentiment and stance correlate with major election events, presenting a temporal and geographical analysis of the data. The goal is to ascertain the impact of social media on election outcomes and public opinion.
+
+## Inference
 
 1. Download the data from [kaggle us 2020 election tweets](https://www.kaggle.com/datasets/manchunhui/us-election-2020-tweets)
-2. Structure your data like this:
+2. Structure your data like this, or run `inference.ipynb` to generate the inferences:
     ```sh
     .
     ├── README.md
     └── data
-        ├── predict.ipynb
-        ├── emotion             # prediction of tweet's emotion
-        ├── language            # prediction of tweet's language
-        ├── sentiment           # prediction of tweet's sentiment
-        ├── stance_trump        # prediction of tweet's stance for trump
-        ├── stance_biden        # prediction of tweet's stance for biden
+        ├── inference.ipynb
+        ├── emotion             # inference of tweet's emotion
+        ├── language            # inference of tweet's language
+        ├── sentiment           # inference of tweet's sentiment
+        ├── stance_trump        # inference of tweet's stance for trump
+        ├── stance_biden        # inference of tweet's stance for biden
         └── src                 # <- kaggle original data
             ├── hashtag_donaldtrump.csv
             └── hashtag_joebiden.csv
     ```
 
-## How to run
+## Figures
 
-```py
-from util import load_data
-data = load_data("trump") # eithor "trump" or "biden"
-```
+See [figure_generator.py](figure_generator.py).
    
