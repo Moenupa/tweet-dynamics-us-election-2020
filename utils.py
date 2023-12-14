@@ -61,9 +61,10 @@ def load_data(candidate: str, cache: bool = True) -> pd.DataFrame:
     
     # df['weight'] = 1
     def get_weight(x):
-        # [1, 100]
-        w1 = min(100, x['likes'] + 1)
-        w2 = min(100, x['retweet_count'] + 1)
+        # [1, ratio]
+        ratio = 1000
+        w1 = min(ratio, x['likes'] + 1)
+        w2 = min(ratio, x['retweet_count'] + 1)
         return (w1 + w2) / 2
     df['weight'] = df.apply(get_weight, axis=1)
 
@@ -149,7 +150,7 @@ def get_cols_by_suffix(data: pd.DataFrame, suffix: str) -> list[str]:
 
 
 def merge_data(cache: bool = True):
-    pickle_path = f'{DATA_ROOT}/cache/merged.csv'
+    pickle_path = f'{DATA_ROOT}/cache/merged.pkl'
     if cache and os.path.exists(pickle_path):
         return pkl.load(open(pickle_path, 'rb'))
     
@@ -166,23 +167,56 @@ def merge_data(cache: bool = True):
     return df
 
 
+def dist(df: pd.DataFrame, grouped_cols: list[str], target_cols: list[str]) -> pd.DataFrame:
+    """
+    Get distribution of target columns, grouped by grouped columns such that
+    `sum(target_cols) = 1` and `distribution = target_cols*weight`
+    
+    Args:
+    - `df` (pd.DataFrame): Dataframe to group by
+    - `grouped_cols` (list[str]): Columns to group by
+    - `target_cols` (list[str]): Columns to sum up
+    
+    e.g.
+    ```
+    >>> groupby(load_data('biden'), ['created_at'], get_cols_by_prefix(df, 'sentiment'))
+                sentiment_negative  sentiment_neutral  sentiment_positive   weight
+    created_at                                                                     
+    2020-10-15            0.542378           0.326894            0.130728  46541.0 
+    2020-10-16            0.474969           0.324787            0.200244  58563.0 
+    2020-10-17            0.495558           0.337216            0.167225  34063.5 
+    2020-10-18            0.506811           0.329069            0.164120  31878.0 
+    2020-10-19            0.493768           0.346814            0.159418  32154.5 
+    ```
+    """
+    assert set(grouped_cols) <= set(df.columns), \
+        f'grouped columns not found {grouped_cols}'
+    assert set(target_cols) <= set(df.columns), \
+        f'target columns not found {target_cols}'
+    assert 'weight' in df.columns, f'weight column not found'
+
+    # apply weight to target_cols
+    all_cols = grouped_cols + target_cols + ['weight']
+    sum_cols = target_cols + ['weight']
+    
+    # copy related dataframe columns only
+    ret = df[all_cols].copy()
+    for col in target_cols:
+        ret[col] = ret[col] * ret['weight']
+    # perform groupby
+    ret = ret.groupby(grouped_cols, sort=True)[sum_cols].sum()
+    
+    # normalize by weight
+    for col in target_cols:
+        ret[col] = ret[col] / ret['weight']
+    
+    return ret
+
+
 if __name__ == '__main__':
     pd.set_option('display.max_colwidth', None)
     pd.set_option('display.max_columns', None)
     
-    data = merge_data(cache=True)
-    
-    """ for prefix in PREFIXES:
-        fig, ax = plt.subplots(**PLOT_KW)
-        sns.countplot(data, ax=ax, palette='coolwarm', stat="percent",
-                      x=prefix, hue="hashtag", hue_order=["biden", "trump"])
-        fig.savefig(f'tmp/{prefix}.png')
-        plt.close(fig) 
-    
-    for cand in CANDIDATES:
-        fig = sns.jointplot(data, palette='coolwarm',
-            x=f"stance_{cand}_positive", y="sentiment_positive", hue="hashtag",
-            kind="kde",
-        )
-        fig.savefig(f'tmp/{cand}.png')
-        plt.close(fig) """
+    df = load_data('biden')
+    df['created_at'] = df['created_at'].dt.floor('D')
+    print(dist(df, ['created_at'], get_cols_by_prefix(df, 'sentiment')).head())

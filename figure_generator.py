@@ -1,9 +1,16 @@
 import os
-import logging
 
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from utils import load_data, get_cols_by_prefix, get_cols_by_suffix, CANDIDATES
+from utils import (
+    load_data, 
+    merge_data,
+    get_cols_by_prefix, 
+    get_cols_by_suffix, 
+    dist,
+    CANDIDATES,
+    PREFIXES
+)
 
 import numpy as np
 import pandas as pd
@@ -12,33 +19,43 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.dates import DateFormatter, DayLocator
 import seaborn as sns
-from scipy import stats
+from itertools import product
+from tqdm import tqdm
 
 
 PLOT_KW_STACK = {'figsize':(8, 6), 'dpi':200}
 PLOT_KW = {'figsize':(8, 4.5), 'dpi':200}
+
+TIME_SCALES = ['H', '6H', '12H', 'D']
+
+GOP = '#d6342d'
+DNC = '#1941c3'
+
+ELECTION_PALETTE = [DNC, GOP]
+ELECTION_ORDER = ['biden', 'trump']
 
 
 def fmt(string: str) -> str:
     return string.replace("_", " ").title()
 
 
-def save_stackplot(name: str, target: str, ylabel: str, time_scale: str, x, **kwargs) -> None:
+def save_stackplot(dirname: str, candidate: str, task: str, percentage: bool, x, **kwargs) -> None:
     """
-    Save a stackplot to `figures/<ylabel>` or `figures/quantity` folder
+    Save a stackplot to `figures/<dirname>/<candidate>/<task>.png`.
+    If `percentage=True`, cap y axis to 100 otherwise no y upper limit
     
     Args:
-    - `name`: candidate name
+    - `candidate`: candidate name
     - `target`: target column name (used in title and filename for saving). e.g. `<emotion> stackplot with #biden tweets`
-    - `ylabel`: if 'percentage', y axis will be in %, else in quantity (i.e. no. of tweets)
+    - `percentage`: whether to plot in percentage or quantity
+    - `task`: task name, ONLY used in saving folder name
     - `x`: x axis, usually time
+    - `annotation`: annotation to add to the plot, used in title and filename only
     - `kwargs`: key-value pairs of column name and its value, usually the value is a list of y axis
     """
     fig, ax = plt.subplots(**PLOT_KW_STACK)
-    
     # declare type, this helps intellicode and pylint
-    fig: Figure = fig
-    ax: Axes = ax
+    fig: Figure = fig; ax: Axes = ax
 
     # plot stackplot
     ax.stackplot(x,
@@ -53,68 +70,65 @@ def save_stackplot(name: str, target: str, ylabel: str, time_scale: str, x, **kw
     ax.xaxis.set_major_formatter(DateFormatter('%m-%d'))
     fig.autofmt_xdate()
 
-    if ylabel == 'percentage':
-        ax.set_ylabel('Percentage (%)')
-        ax.set_ylim(0, 100)
-    elif ylabel == 'quantity':
-        ax.set_ylabel('No. of Tweets')
-        ax.set_ylim(0)
+    if percentage:
+        ax.set_ylabel('Percentage (%)');    ax.set_ylim(0, 100)
     else:
-        ax.set_ylabel(ylabel)
-        ax.set_ylim(0)
-    ax.set_title(
-        f'{fmt(target)} Stackplot with #{name.title()} Tweets Grouped by {time_scale}')
+        ax.set_ylabel('No. of Tweets');     ax.set_ylim(0)
+    ax.set_title(f'{fmt(task)} Stackplot with #{candidate.title()} Tweets')
 
     fig.legend(loc='outside lower center', ncols=min(10, len(kwargs)))
 
-    os.makedirs(f"figures/{ylabel}/{name}", exist_ok=True)
-    fig.savefig(f"figures/{ylabel}/{name}/{target}_{time_scale}.png")
+    os.makedirs(f"figures/{dirname}/{candidate}", exist_ok=True)
+    fig.savefig(f"figures/{dirname}/{candidate}/{task}.png")
     plt.close(fig)
 
 
-def plot_candidate_multiclass(candidate_name: str, target_prefix: str = 'stance_biden', time_scale: str = 'H'):
+def plot_candidate_multiclass(candidate_name: str, prefix: str = 'stance_biden', time_scale: str = None):
     """
     Plot the stackplot of each class of target_prefix
     """
     # read and set 'created_at' precision to hour, which helps plotting
     # simply put, plot with xtick by each hour
     par_data = load_data(candidate_name)
-    par_data['created_at'] = par_data['created_at'].dt.floor(time_scale)
+    if time_scale != None:
+        par_data['created_at'] = par_data['created_at'].dt.floor(time_scale)
+    else:
+        par_data['created_at'] = par_data['created_at'].dt.floor('D')
 
     # get all columns with target_prefix
-    target_col = get_cols_by_prefix(par_data, target_prefix)
-
     # group by time_scale and sum up the count
-    stats = par_data.groupby(['created_at'], sort=True)[target_col].sum()
-    stats['hr_sum'] = stats.sum(axis=1).round()
+    target_col = get_cols_by_prefix(par_data, prefix)
+    stats = dist(par_data, ['created_at'], target_col)
 
-    # run a percentage plot
-    save_stackplot(candidate_name, target_prefix, 'percentage', time_scale,
-                   x=stats.index, **{
-                       col: stats[col] / stats['hr_sum'] * 100
-                       for col in target_col
-                   })
-    # run a quantity plot
-    save_stackplot(candidate_name, target_prefix, 'quantity', time_scale,
-                   x=stats.index, **{
-                       col: stats[col]
-                       for col in target_col
-                   })
+    if time_scale == None:
+        # do everything normally
+        # run a percentage plot, percentage=True
+        save_stackplot('percentage', candidate_name, prefix, True,
+                    x=stats.index, **{
+                        col: stats[col] * 100
+                        for col in target_col
+                    })
+        # run a quantity plot, percentage=False
+        save_stackplot('quantity', candidate_name, prefix, False,
+                    x=stats.index, **{
+                        col: stats[col] * stats['weight']
+                        for col in target_col
+                    })
+    else:
+        # only run percentage plot
+        save_stackplot(time_scale, candidate_name, prefix, True,
+                       x=stats.index, **{
+                           col: stats[col] * 100
+                           for col in target_col
+                       })
 
 
 def cal_score(df: pd.DataFrame, prefix: str, score_name: str) -> pd.DataFrame:
-    # using sentiment because its easy, only to compute no. of tweets
-    cols = [f'sentiment_{s}' for s in ['negative', 'positive', 'neutral']]
-    s = 'No. of Tweets'
-    df[s] = df[cols].sum(axis=1)
-    
+    # score = (pos - neg), and because sum(pos, neg, neu) = 1, score in [-1, 1]
     neg = f'{prefix}_negative'
     pos = f'{prefix}_positive'
-    assert neg in df.columns and pos in df.columns, f'no neg and pos cols'
-    df[score_name] = df.apply(lambda x: (x[pos] - x[neg]) / x[s], axis=1)
-    # df[score_name] = (df[pos]-df[neg]) / df[s]
-    # print(df[pos].value_counts().sort_index())
-    # exit(0)
+    df[score_name] = df.apply(lambda x: (x[pos] - x[neg]), axis=1)
+    df.rename(columns={'weight': 'No. of Tweets'}, inplace=True)
     return df
     
 
@@ -146,11 +160,10 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
     score_name = f'{fmt(target_prefix)} Score'
     
     # draw graph according to lat and long onto a map
-    scatter_data = par_data.groupby(['lat', 'long']).sum(numeric_only=True)
+    scatter_data = dist(par_data, ['lat', 'long'], target_col)
     scatter_data = cal_score(scatter_data, target_prefix, score_name)
     fig, ax = plt.subplots(**PLOT_KW)
     usa.boundary.plot(ax=ax, linewidth=1, alpha=0.1, color='grey')
-    # sns.relplot(data=scatter_data, x="total_bill", y="tip", col="time", hue="day", style="day", kind="scatter")
     sns.scatterplot(scatter_data, 
                     x='long', y='lat', alpha=0.2, 
                     hue=score_name, palette='Spectral',
@@ -165,7 +178,7 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
     plt.close(fig)
     
     # draw graph for each state, categorized, then display on map
-    state_data = par_data.groupby(['state_code']).sum(numeric_only=True)
+    state_data = dist(par_data, ['state_code'], target_col)
     state_data = cal_score(state_data, target_prefix, score_name)
     state_data = usa.merge(state_data, left_on='STUSPS', right_index=True, how='left')
     
@@ -190,6 +203,7 @@ def plot_candidate_geo(candidate_name: str, target_prefix: str = 'stance_biden')
     os.makedirs(f"figures/states/{candidate_name}", exist_ok=True)
     fig.savefig(f"figures/states/{candidate_name}/{target_prefix}.png")
     plt.close(fig)
+
 
 def plot_candidate_correlation(candidate_name: str, time_scale: str = 'H', aim: tuple = ('negative', 'anger')):
     """
@@ -234,16 +248,10 @@ def plot_candidate_correlation(candidate_name: str, time_scale: str = 'H', aim: 
     ax: Axes = ax
 
     # plot scatter
-    # x = row[0].tolist()
-    # y = col[0].tolist()
     color = (0, 66/255., 202 / 255.) if candidate_name == 'biden' \
         else (233/255., 20/255., 30/255.)
     sns.regplot(x=row[0], y=col[0], ax=ax, color=color, 
                 truncate=False, line_kws={'color': (0.5, 0.5, 0.5)}, scatter_kws={'s': 15})
-    # ax.scatter(x, y, s=15, color=color)
-    # slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
-    # x_range = np.linspace(0, 100, 100)
-    # ax.plot(x_range, intercept + slope*x_range, color=(0.5, 0.5, 0.5), label='Regression Line')
     ax.set_xlabel(f'Percentage of Sentiment {aim[0]} (%)')
     ax.set_ylabel(f'Percentage of Emotion {aim[1]} (%)')
     ax.set_xlim(0, 100)
@@ -256,21 +264,77 @@ def plot_candidate_correlation(candidate_name: str, time_scale: str = 'H', aim: 
     fig.savefig(f"figures/correlation/{candidate_name}/{aim[0]}_{aim[1]}_{time_scale}.png")
     plt.close(fig)
 
+
+def plot_indictor_correlation() -> None:
+    """
+    Plot the KDE plot of combinations of indicator values in
+    `['sentiment', 'stance_biden', 'stance_trump']`
+    """
+    def parser(l: list) -> str:
+        def cats(s: str) -> str:
+            if s.endswith("negative"):
+                return "n"
+            elif s.endswith("positive"):
+                return "p"
+            else:
+                return "u"
+        return "".join(cats(i) for i in l[:3])
+
+    os.makedirs(f"figures/correlation/indicators", exist_ok=True)
+    data = merge_data()
+    all_cols = [get_cols_by_prefix(data, prefix) 
+                for prefix in ['sentiment', 'stance_biden', 'stance_trump']]
+    for cols in tqdm(product(*all_cols), total=27):
+        cols = list(cols) + ['hashtag']
+        g = sns.pairplot(
+            data=data.sample(n=10_000)[cols],
+            palette=ELECTION_PALETTE,
+            hue="hashtag",
+            hue_order=ELECTION_ORDER,
+            kind="kde",
+            plot_kws={"fill": True, "alpha": 0.3}
+            # thresh=.1,
+        )
+        g.savefig(
+            f"figures/correlation/indicators/{parser(cols)}.png", dpi=200)
+
+
+def plot_overall_distribution() -> None:
+    os.makedirs(f"figures/overall", exist_ok=True)
+    data = merge_data()
+    for prefix in PREFIXES:
+        fig, ax = plt.subplots(**PLOT_KW)
+        sns.countplot(data, ax=ax, 
+                      x=prefix,
+                      stat="percent",
+                      palette=ELECTION_PALETTE,
+                      hue="hashtag", 
+                      hue_order=ELECTION_ORDER)
+        
+        fig.savefig(f'figures/overall/{prefix}.png')
+        plt.close(fig)
+
+
 if __name__ == '__main__':
-    targets = ['emotion', 'sentiment', 'stance_biden', 'stance_trump']
-    time_scale = ['H', '6H', '12H', 'D']
-    # for ts in time_scale:
-    #     for col in targets:
-    #         for par_name in CANDIDATES:
-    #             plot_candidate_multiclass(par_name, col, ts)
+    plot_indictor_correlation()
+    exit(0)
     
-    # targets = ['sentiment', 'stance_biden', 'stance_trump']
-    # for col in targets:
-    #     for par_name in CANDIDATES:
-    #         plot_candidate_geo(par_name, col)
+    targets = ['emotion', 'sentiment', 'stance_biden', 'stance_trump']
+    for ts in TIME_SCALES:
+        for prefix in PREFIXES:
+            for par_name in CANDIDATES:
+                plot_candidate_multiclass(par_name, prefix, ts)
+    
+    for prefix in PREFIXES:
+        for par_name in CANDIDATES:
+            plot_candidate_multiclass(par_name, prefix)
+    
+    for col in ['sentiment', 'stance_biden', 'stance_trump']:
+        for par_name in CANDIDATES:
+            plot_candidate_geo(par_name, col)
 
     aims = [('negative', 'anger'), ('positive', 'joy')]
-    for ts in time_scale:
+    for ts in TIME_SCALES:
         for par_name in CANDIDATES:
             for aim in aims:
                 plot_candidate_correlation(par_name, ts, aim)
