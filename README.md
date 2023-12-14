@@ -25,5 +25,5 @@ This study delves into the dynamics of public opinion during the 2020 U.S. Presi
 
 ## Figures
 
-See [figure_generator.py](figure_generator.py).
+See [figure_generator.py](figure_generator.py). You can obtain a compiled version from [github@Moenupa/tweet-dynamics-us-election-2020](https://github.com/Moenupa/tweet-dynamics-us-election-2020)
    
